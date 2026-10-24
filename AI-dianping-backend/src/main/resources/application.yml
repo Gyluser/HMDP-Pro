@@ -44,12 +44,16 @@ langchain4j:
       # 兼容 OpenAI 协议的 DeepSeek 配置；密钥只从环境变量读取，不写入仓库。
       api-key: ${OPENAI_API_KEY:${DEEPSEEK_API_KEY:not-configured}}
       model-name: ${MODEL_NAME:deepseek-flash}
+      timeout: 30s
+      max-retries: 0
       log-requests: true
       log-responses: true
     streaming-chat-model:
       base-url: ${OPENAI_BASE_URL:https://api.deepseek.com}
       api-key: ${OPENAI_API_KEY:${DEEPSEEK_API_KEY:not-configured}}
       model-name: ${MODEL_NAME:deepseek-flash}
+      timeout: 30s
+      max-retries: 0
       log-requests: true
       log-responses: true
     embedding-model:

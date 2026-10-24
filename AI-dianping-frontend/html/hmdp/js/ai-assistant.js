@@ -3,6 +3,166 @@
   var RETRY_DELAY = 200;
   var attemptCount = 0;
 
+  function createConversationId() {
+    if (window.crypto && window.crypto.randomUUID) {
+      return window.crypto.randomUUID();
+    }
+    return Date.now().toString(36) + "-" + Math.random().toString(36).slice(2);
+  }
+
+  function escapeHtml(value) {
+    return String(value == null ? "" : value).replace(/[&<>\"']/g, function (char) {
+      return {
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '\"': "&quot;",
+        "'": "&#39;",
+      }[char];
+    });
+  }
+
+  function renderInlineMarkdown(value) {
+    var html = escapeHtml(value);
+    var codeTokens = [];
+
+    html = html.replace(/`([^`]+)`/g, function (_, code) {
+      var token = "@@AI_CODE_" + codeTokens.length + "@@";
+      codeTokens.push("<code>" + code + "</code>");
+      return token;
+    });
+    html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    html = html.replace(/__([^_]+)__/g, "<strong>$1</strong>");
+    html = html.replace(/\*([^*]+)\*/g, "<em>$1</em>");
+    html = html.replace(/_([^_]+)_/g, "<em>$1</em>");
+    html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+
+    return html.replace(/@@AI_CODE_(\d+)@@/g, function (_, index) {
+      return codeTokens[Number(index)];
+    });
+  }
+
+  function tableCells(line) {
+    var normalized = line.trim();
+    if (normalized.charAt(0) === "|") {
+      normalized = normalized.slice(1);
+    }
+    if (normalized.charAt(normalized.length - 1) === "|") {
+      normalized = normalized.slice(0, -1);
+    }
+    return normalized.split("|").map(function (cell) {
+      return cell.trim();
+    });
+  }
+
+  function isTableSeparator(line) {
+    return /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(line);
+  }
+
+  function renderMarkdown(source) {
+    var lines = String(source == null ? "" : source).replace(/\r\n?/g, "\n").split("\n");
+    var html = [];
+    var listType = null;
+    var inCodeBlock = false;
+    var codeLines = [];
+
+    function closeList() {
+      if (listType) {
+        html.push("</" + listType + ">");
+        listType = null;
+      }
+    }
+
+    function closeCodeBlock() {
+      if (inCodeBlock) {
+        html.push("<pre><code>" + escapeHtml(codeLines.join("\n")) + "</code></pre>");
+        codeLines = [];
+        inCodeBlock = false;
+      }
+    }
+
+    for (var i = 0; i < lines.length; i += 1) {
+      var line = lines[i];
+      var trimmed = line.trim();
+
+      if (/^```/.test(trimmed)) {
+        closeList();
+        if (inCodeBlock) {
+          closeCodeBlock();
+        } else {
+          inCodeBlock = true;
+        }
+        continue;
+      }
+      if (inCodeBlock) {
+        codeLines.push(line);
+        continue;
+      }
+
+      if (!trimmed) {
+        closeList();
+        continue;
+      }
+
+      if (i + 1 < lines.length && line.indexOf("|") >= 0 && isTableSeparator(lines[i + 1])) {
+        closeList();
+        var headers = tableCells(line);
+        html.push("<div class=\"ai-table-wrap\"><table><thead><tr>");
+        headers.forEach(function (header) {
+          html.push("<th>" + renderInlineMarkdown(header) + "</th>");
+        });
+        html.push("</tr></thead><tbody>");
+        i += 2;
+        while (i < lines.length && lines[i].trim() && lines[i].indexOf("|") >= 0) {
+          var cells = tableCells(lines[i]);
+          html.push("<tr>");
+          for (var cellIndex = 0; cellIndex < headers.length; cellIndex += 1) {
+            html.push("<td>" + renderInlineMarkdown(cells[cellIndex] || "") + "</td>");
+          }
+          html.push("</tr>");
+          i += 1;
+        }
+        html.push("</tbody></table></div>");
+        i -= 1;
+        continue;
+      }
+
+      var heading = /^(#{1,3})\s+(.+)$/.exec(trimmed);
+      if (heading) {
+        closeList();
+        var level = heading[1].length;
+        html.push("<h" + level + ">" + renderInlineMarkdown(heading[2]) + "</h" + level + ">");
+        continue;
+      }
+
+      var unordered = /^[-*+]\s+(.+)$/.exec(trimmed);
+      var ordered = /^\d+[.)]\s+(.+)$/.exec(trimmed);
+      if (unordered || ordered) {
+        var nextListType = unordered ? "ul" : "ol";
+        if (listType && listType !== nextListType) {
+          closeList();
+        }
+        if (!listType) {
+          listType = nextListType;
+          html.push("<" + listType + ">");
+        }
+        html.push("<li>" + renderInlineMarkdown((unordered || ordered)[1]) + "</li>");
+        continue;
+      }
+
+      closeList();
+      if (/^>\s?/.test(trimmed)) {
+        html.push("<blockquote>" + renderInlineMarkdown(trimmed.replace(/^>\s?/, "")) + "</blockquote>");
+      } else {
+        html.push("<p>" + renderInlineMarkdown(trimmed) + "</p>");
+      }
+    }
+
+    closeList();
+    closeCodeBlock();
+    return html.join("");
+  }
+
   function mountAssistantPage() {
     var container = document.getElementById("ai-page");
     if (!container) {
@@ -69,6 +229,11 @@
                 >
                   <span></span><span></span><span></span>
                 </div>
+                <div
+                  v-else-if="message.role === 'assistant'"
+                  class="ai-message-markdown"
+                  v-html="renderMarkdown(message.content)"
+                ></div>
                 <div v-else>{{ message.content }}</div>
                 <span v-if="message.isStreaming" style="margin-left: 2px;">|</span>
               </div>
@@ -102,7 +267,7 @@
           messages: [],
           userInput: "",
           isLoading: false,
-          sessionId: Date.now().toString(),
+          sessionId: createConversationId(),
           controller: null,
         };
       },
@@ -123,6 +288,9 @@
         },
       },
       methods: {
+        renderMarkdown: function (content) {
+          return renderMarkdown(content);
+        },
         handleClose: function () {
           if (this.isLoading) {
             this.stopResponse();
@@ -138,7 +306,7 @@
         startNewConversation: function () {
           this.stopResponse();
           this.messages = [];
-          this.sessionId = Date.now().toString();
+          this.sessionId = createConversationId();
           this.messages.push({
             role: "assistant",
             content: "你好! 我是您的专属AI探店助手,请问有什么能帮到您？",
@@ -234,7 +402,7 @@
             var response = await fetch(
               "/api/chat?message=" +
                 encodeURIComponent(question) +
-                "&memoryId=" +
+                "&conversationId=" +
                 this.sessionId,
               options
             );

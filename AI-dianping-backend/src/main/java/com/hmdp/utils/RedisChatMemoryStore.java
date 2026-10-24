@@ -22,7 +22,10 @@ public class RedisChatMemoryStore implements ChatMemoryStore {
     @Override
     public List<ChatMessage> getMessages(Object memoryId) {
         //从Redis中获取消息列表，反序列化为ChatMessage对象列表并返回
-        String json = stringRedisTemplate.opsForValue().get(memoryId.toString());
+        String json = stringRedisTemplate.opsForValue().get(AiConversationKeys.redisKey(memoryId));
+        if (json == null || json.isBlank()) {
+            return List.of();
+        }
         //把json转换为list
         List<ChatMessage> list = ChatMessageDeserializer.messagesFromJson(json);
         return list;
@@ -34,12 +37,12 @@ public class RedisChatMemoryStore implements ChatMemoryStore {
         //把list转换为json
         String json = ChatMessageSerializer.messagesToJson(list);
         //存储到Redis中
-        stringRedisTemplate.opsForValue().set(memoryId.toString(), json, 1L, TimeUnit.DAYS);
+        stringRedisTemplate.opsForValue().set(AiConversationKeys.redisKey(memoryId), json, 1L, TimeUnit.DAYS);
     }
 
     @Override
     public void deleteMessages(Object memoryId) {
         //从Redis中删除指定ID的消息列表
-        stringRedisTemplate.delete(memoryId.toString());
+        stringRedisTemplate.delete(AiConversationKeys.redisKey(memoryId));
     }
 }

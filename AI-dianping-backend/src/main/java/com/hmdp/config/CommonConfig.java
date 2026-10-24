@@ -2,17 +2,20 @@ package com.hmdp.config;
 
 import dev.langchain4j.data.document.Document;
 import dev.langchain4j.data.document.loader.ClassPathDocumentLoader;
-import dev.langchain4j.memory.ChatMemory;
 import dev.langchain4j.memory.chat.ChatMemoryProvider;
-import dev.langchain4j.memory.chat.MessageWindowChatMemory;
+import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.embedding.EmbeddingModel;
 import dev.langchain4j.model.openai.OpenAiChatModel;
 import dev.langchain4j.rag.content.retriever.ContentRetriever;
 import dev.langchain4j.rag.content.retriever.EmbeddingStoreContentRetriever;
+import dev.langchain4j.service.AiServices;
 import dev.langchain4j.store.embedding.EmbeddingStore;
 import dev.langchain4j.store.embedding.EmbeddingStoreIngestor;
 import dev.langchain4j.store.embedding.inmemory.InMemoryEmbeddingStore;
 import dev.langchain4j.store.memory.chat.ChatMemoryStore;
+import com.hmdp.service.ConsultantService;
+import com.hmdp.utils.ReservationTool;
+import com.hmdp.utils.SummarizingChatMemory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import java.util.List;
@@ -35,30 +38,26 @@ public class CommonConfig {
     }
 
     @Bean
-    public ChatMemory chatMemory(){
-        return MessageWindowChatMemory
-                .builder()
-                .maxMessages(20)//最多记忆20条消息
-                .build();
+    public ChatMemoryProvider chatMemoryProvider(){
+        return memoryId -> new SummarizingChatMemory(memoryId, redisChatMemoryStore, model);
     }
 
     @Bean
-    public ChatMemoryProvider chatMemoryProvider(){
-        //匿名内部类
-        //根据记忆ID获取记忆对象
-        //设置记忆存储组件
-        return new ChatMemoryProvider(){//匿名内部类
-            //根据记忆ID获取记忆对象
-            @Override
-            public ChatMemory get(Object memoryId){
-                return MessageWindowChatMemory
-                        .builder()
-                        .maxMessages(20)
-                        .id(memoryId)  // 根据时间生成记忆id
-                        .chatMemoryStore(redisChatMemoryStore)//设置记忆存储组件
-                        .build();
-            }
-        };
+    public ConsultantService consultantService(
+            StreamingChatModel streamingChatModel,
+            ChatMemoryProvider chatMemoryProvider,
+            ContentRetriever contentRetriever,
+            ReservationTool reservationTool) {
+        return AiServices.builder(ConsultantService.class)
+                .chatModel(model)
+                .streamingChatModel(streamingChatModel)
+                .chatMemoryProvider(chatMemoryProvider)
+                .contentRetriever(contentRetriever)
+                .tools(reservationTool)
+                // 模型误重复调用工具时，最多允许 5 次，避免请求无限占用
+                // 后端线程并最终被 Nginx 返回 504。
+                .maxSequentialToolsInvocations(5)
+                .build();
     }
 
     @Bean
