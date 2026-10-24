@@ -574,3 +574,125 @@ body {
 .login-container .el-button span {
   color: #ffffff !important;
 }
+
+/* 首页顶部布局：搜索框独立成白色卡片，分类卡片采用图标在上、文字在下 */
+body.home-page #app {
+  height: 100vh;
+  min-height: 100vh;
+  padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px)) !important;
+  overflow-x: hidden;
+  overflow-y: auto;
+  /* 避免 backdrop-filter 为 fixed 底部导航建立局部定位上下文 */
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+body.home-page .search-bar {
+  background: transparent !important;
+  color: #1d2127 !important;
+  min-height: 0;
+  height: auto;
+  padding: 9px 16px 8px !important;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+body.home-page .search-input {
+  flex: 1;
+  width: auto;
+}
+
+body.home-page .search-input .el-input__inner {
+  height: 42px;
+  line-height: 42px;
+  background: #fff !important;
+  border: 1px solid #ede3d3 !important;
+  color: #1d2127 !important;
+  box-shadow: 0 2px 10px rgba(29, 33, 39, 0.08) !important;
+}
+
+body.home-page .header-icon {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #e7f3f0;
+  color: #0f766e !important;
+  font-size: 16px;
+}
+
+body.home-page .type-list {
+  height: auto !important;
+  min-height: 0 !important;
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px !important;
+  background: #fff !important;
+  border: 1px solid #ede3d3 !important;
+  border-radius: 18px !important;
+  box-shadow: 0 4px 14px rgba(29, 33, 39, 0.06) !important;
+  padding: 12px !important;
+  margin: 8px 0 10px !important;
+}
+
+body.home-page .type-box {
+  width: auto !important;
+  min-width: 0;
+  height: 72px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid #ede3d3;
+  border-radius: 14px;
+  padding: 6px 4px 7px;
+  box-sizing: border-box;
+}
+
+body.home-page .type-view {
+  width: 100%;
+  height: 36px;
+  flex: 0 0 50%;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+body.home-page .type-box img {
+  width: auto;
+  height: 100%;
+  max-width: 50%;
+  object-fit: contain;
+}
+
+body.home-page .type-text {
+  color: #474d57 !important;
+  font-size: 10px;
+  line-height: 1.2;
+  margin: 0;
+}
+
+/* 分类栏与博客列表共用首页滚动容器，一起向上滚动 */
+body.home-page .blog-list {
+  height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+  width: 100%;
+  margin: 6px 0 0 !important;
+}
+
+/* 底部导航固定在浏览器窗口最下方，不随首页内容滚动 */
+body.home-page .foot {
+  position: fixed !important;
+  left: 50%;
+  bottom: 0 !important;
+  z-index: 1000;
+  background: #ffffff !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  border-radius: 18px 18px 0 0 !important;
+}

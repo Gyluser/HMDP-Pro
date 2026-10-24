@@ -58,7 +58,7 @@ langchain4j:
       log-responses: true
     embedding-model:
       # Java 通过 OpenAI 兼容协议调用本机 SentenceTransformer 服务。
-      base-url: http://127.0.0.1:${AI_EMBEDDING_PORT:8092}/v1
+      base-url: http://127.0.0.1:${AI_EMBEDDING_PORT:8088}/v1
       api-key: local-embedding
       model-name: bge-small-zh-v1.5
       log-requests: false

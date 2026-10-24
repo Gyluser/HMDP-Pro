@@ -23,7 +23,7 @@ MODEL_PATH = Path(
     )
 )
 HOST = os.environ.get("AI_EMBEDDING_HOST", "127.0.0.1")
-PORT = int(os.environ.get("AI_EMBEDDING_PORT", "8092"))
+PORT = int(os.environ.get("AI_EMBEDDING_PORT", "8088"))
 
 
 def load_model():
