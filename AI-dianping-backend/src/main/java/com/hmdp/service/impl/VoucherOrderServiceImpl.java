@@ -170,7 +170,9 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         RLock lock = redissonClient.getLock(RedisConstants.SECKILL_RESERVATION_LOCK_KEY + orderId);
         boolean locked = false;
         try {
-            locked = lock.tryLock(2, 30, TimeUnit.SECONDS);
+            // 不传 leaseTime，使用 Redisson Watch Dog 在业务线程存活期间自动续期，
+            // 避免数据库瞬时变慢导致固定 30 秒租约过期。
+            locked = lock.tryLock(2, TimeUnit.SECONDS);
             if (!locked) {
                 throw new IllegalStateException("无法获取秒杀订单处理锁");
             }

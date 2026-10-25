@@ -1,7 +1,9 @@
 package com.hmdp.listener;
 
 import com.hmdp.config.RabbitMQConfig;
+import com.hmdp.entity.SeckillOrderException;
 import com.hmdp.entity.VoucherOrder;
+import com.hmdp.mapper.SeckillOrderExceptionMapper;
 import com.hmdp.service.IVoucherOrderService;
 import com.hmdp.service.SeckillMqMetrics;
 import org.junit.jupiter.api.BeforeEach;
@@ -36,12 +38,15 @@ class SeckillOrderConsumerTest {
     private RabbitTemplate rabbitTemplate;
     @Mock
     private SeckillMqMetrics seckillMqMetrics;
+    @Mock
+    private SeckillOrderExceptionMapper seckillOrderExceptionMapper;
 
     private SeckillOrderConsumer consumer;
 
     @BeforeEach
     void setUp() {
-        consumer = new SeckillOrderConsumer(voucherOrderService, rabbitTemplate, seckillMqMetrics);
+        consumer = new SeckillOrderConsumer(voucherOrderService, rabbitTemplate, seckillMqMetrics,
+                seckillOrderExceptionMapper);
     }
 
     @Test
@@ -97,6 +102,37 @@ class SeckillOrderConsumerTest {
         confirmPublisher(false);
 
         assertThatThrownBy(() -> consumer.processOrder(order, messageWithRetryCount(0)))
+                .isInstanceOf(ImmediateRequeueAmqpException.class);
+    }
+
+    @Test
+    void shouldPersistDeadLetterBeforeAutoAcknowledgement() {
+        VoucherOrder order = order();
+        MessageProperties properties = new MessageProperties();
+        properties.setHeader("x-retry-count", 2);
+        properties.setHeader("x-failure-reason", "IllegalStateException: database unavailable");
+        properties.setHeader("X-Trace-Id", "trace-dead-letter");
+
+        consumer.processDeadLetter(order, new Message(new byte[0], properties));
+
+        ArgumentCaptor<SeckillOrderException> exceptionCaptor =
+                ArgumentCaptor.forClass(SeckillOrderException.class);
+        verify(seckillOrderExceptionMapper).upsert(exceptionCaptor.capture());
+        SeckillOrderException exceptionOrder = exceptionCaptor.getValue();
+        assertThat(exceptionOrder.getOrderId()).isEqualTo(1L);
+        assertThat(exceptionOrder.getUserId()).isEqualTo(2L);
+        assertThat(exceptionOrder.getVoucherId()).isEqualTo(3L);
+        assertThat(exceptionOrder.getRetryCount()).isEqualTo(2);
+        assertThat(exceptionOrder.getFailureReason()).isEqualTo("IllegalStateException: database unavailable");
+        assertThat(exceptionOrder.getTraceId()).isEqualTo("trace-dead-letter");
+    }
+
+    @Test
+    void shouldRequeueDeadLetterWhenPersistenceFails() {
+        doThrow(new IllegalStateException("database unavailable"))
+                .when(seckillOrderExceptionMapper).upsert(any(SeckillOrderException.class));
+
+        assertThatThrownBy(() -> consumer.processDeadLetter(order(), messageWithRetryCount(2)))
                 .isInstanceOf(ImmediateRequeueAmqpException.class);
     }
 

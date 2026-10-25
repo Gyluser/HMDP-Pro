@@ -611,6 +611,24 @@ body.home-page .search-input .el-input__inner {
   box-shadow: 0 2px 10px rgba(29, 33, 39, 0.08) !important;
 }
 
+body.home-page .home-ai-button {
+  flex: 0 0 42px;
+  width: 42px;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  box-sizing: border-box;
+  background: linear-gradient(135deg, #2f6f68, #6ca89a);
+  box-shadow: 0 8px 18px rgba(47, 111, 104, 0.28);
+}
+
+body.home-page .home-ai-button svg {
+  width: 24px;
+  height: 24px;
+}
+
 body.home-page .header-icon {
   width: 42px;
   height: 42px;

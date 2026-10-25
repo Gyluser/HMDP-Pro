@@ -15,7 +15,11 @@ public final class TraceContext {
 
     public static String currentTraceId() {
         String traceId = TRACE_ID.get();
-        return traceId == null ? UUID.randomUUID().toString() : traceId;
+        if (traceId == null) {
+            traceId = UUID.randomUUID().toString();
+            set(traceId);
+        }
+        return traceId;
     }
 
     public static void set(String traceId) {

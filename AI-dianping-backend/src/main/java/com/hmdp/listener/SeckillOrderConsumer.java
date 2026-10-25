@@ -1,7 +1,9 @@
 package com.hmdp.listener;
 
 import com.hmdp.config.RabbitMQConfig;
+import com.hmdp.entity.SeckillOrderException;
 import com.hmdp.entity.VoucherOrder;
+import com.hmdp.mapper.SeckillOrderExceptionMapper;
 import com.hmdp.service.IVoucherOrderService;
 import com.hmdp.service.SeckillMqMetrics;
 import com.hmdp.utils.TraceContext;
@@ -31,6 +33,7 @@ public class SeckillOrderConsumer {
     private final IVoucherOrderService voucherOrderService;
     private final RabbitTemplate rabbitTemplate;
     private final SeckillMqMetrics seckillMqMetrics;
+    private final SeckillOrderExceptionMapper seckillOrderExceptionMapper;
 
     @RabbitListener(queues = RabbitMQConfig.SECKILL_ORDER_QUEUE)
     public void processOrder(VoucherOrder order, Message message) {
@@ -83,9 +86,21 @@ public class SeckillOrderConsumer {
             TraceContext.set(traceId);
         }
         try {
+            String failureReason = header(message, "x-failure-reason");
+            SeckillOrderException exceptionOrder = new SeckillOrderException()
+                    .setOrderId(order.getId())
+                    .setUserId(order.getUserId())
+                    .setVoucherId(order.getVoucherId())
+                    .setRetryCount(retryCount(message))
+                    .setFailureReason(abbreviate(failureReason, 500))
+                    .setTraceId(traceId);
+            seckillOrderExceptionMapper.upsert(exceptionOrder);
             log.error("秒杀订单进入死信队列，orderId={}, userId={}, voucherId={}, retryCount={}, reason={}",
                     order.getId(), order.getUserId(), order.getVoucherId(), retryCount(message),
-                    header(message, "x-failure-reason"));
+                    failureReason);
+        } catch (Exception persistFailure) {
+            // 只有异常订单已持久化，监听方法才能正常结束并 AUTO ACK。
+            throw new ImmediateRequeueAmqpException("死信订单持久化失败，消息重新入队", persistFailure);
         } finally {
             TraceContext.clear();
         }
@@ -153,5 +168,12 @@ public class SeckillOrderConsumer {
             return null;
         }
         return value instanceof byte[] bytes ? new String(bytes, StandardCharsets.UTF_8) : value.toString();
+    }
+
+    private String abbreviate(String value, int maxLength) {
+        if (value == null || value.isBlank()) {
+            return "unknown";
+        }
+        return value.length() <= maxLength ? value : value.substring(0, maxLength);
     }
 }
