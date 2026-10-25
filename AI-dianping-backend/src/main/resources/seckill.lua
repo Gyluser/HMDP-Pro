@@ -11,6 +11,9 @@ local orderId = ARGV[3]
 local stockKey = "seckill:stock:" .. voucherId
 --2.2订单key
 local orderKey = "seckill:order:" .. voucherId
+-- 2.3订单预留记录：用于 MQ 投递/消费异常后的库存补偿
+local reservationKey = "seckill:reservation:" .. orderId
+local reservationIndexKey = "seckill:reservation:index"
 
 
 
@@ -32,7 +35,9 @@ end
 redis.call('incrby', stockKey, -1)
 -- 3.5.下单（保存用户）sadd orderKey userId
 redis.call('sadd', orderKey, userId)
--- 3.6.发送消息到消息队列中， XADD stream.orders * k1 v1 k2 v2 ...
-redis.call('xadd', 'stream.orders', '*', 'userId', userId, 'voucherId', voucherId, 'orderId', orderId)
+-- 3.6记录 Redis 预扣状态。订单消息仅由 Java 发送至 RabbitMQ，彻底移除 Redis Stream。
+local now = redis.call('time')[1]
+redis.call('hset', reservationKey, 'userId', userId, 'voucherId', voucherId, 'createdAt', now)
+redis.call('zadd', reservationIndexKey, now, orderId)
 -- 3.7.返回0，代表成功
 return 0
