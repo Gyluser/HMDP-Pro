@@ -1,7 +1,7 @@
 package com.hmdp.service.impl;
 
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import com.hmdp.config.RabbitMQConfig;
+import com.hmdp.config.RocketMQConfig;
 import com.hmdp.dto.Result;
 import com.hmdp.entity.VoucherOrder;
 import com.hmdp.mapper.VoucherOrderMapper;
@@ -12,13 +12,12 @@ import com.hmdp.utils.RedisConstants;
 import com.hmdp.utils.RedisIdWorker;
 import com.hmdp.utils.TraceContext;
 import com.hmdp.utils.UserHolder;
-import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
-import org.springframework.amqp.core.MessageDeliveryMode;
-import org.springframework.amqp.rabbit.connection.CorrelationData;
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.apache.rocketmq.client.producer.SendResult;
+import org.apache.rocketmq.client.producer.SendStatus;
+import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
@@ -33,8 +32,9 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import org.springframework.messaging.Message;
+import org.springframework.messaging.support.MessageBuilder;
 
 @Slf4j
 @Service
@@ -54,55 +54,18 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     private StringRedisTemplate stringRedisTemplate;
 
     @Resource
-    private RabbitTemplate rabbitTemplate;
+    private RocketMQTemplate rocketMQTemplate;
     @Resource
     private SeckillMqMetrics seckillMqMetrics;
 
     private static final DefaultRedisScript<Long> SECKILL_SCRIPT = script("seckill.lua");
     private static final DefaultRedisScript<Long> CONFIRM_RESERVATION_SCRIPT = script("confirm_reservation.lua");
     private static final DefaultRedisScript<Long> RELEASE_RESERVATION_SCRIPT = script("release_reservation.lua");
-    private final Set<Long> returnedMainOrderIds = ConcurrentHashMap.newKeySet();
-    //创建线程安全 Set。RabbitMQ 的 Confirm 回调和 Return 回调可能在不同线程执行，因此不能使用普通的 HashSet。
-    //这个集合保存：已经被 RabbitMQ Return 回调判定为无法路由的主订单 ID
-
     private static DefaultRedisScript<Long> script(String location) {
         DefaultRedisScript<Long> script = new DefaultRedisScript<>();
         script.setLocation(new ClassPathResource(location));
         script.setResultType(Long.class);
         return script;
-    }
-
-    @PostConstruct
-    private void configureRabbitCallbacks() {
-        // 设置 RabbitMQ 的 mandatory 标记，如果消息无法从交换机路由到任何队列，RabbitMQ 要把消息返回给生产者。
-        rabbitTemplate.setMandatory(true);
-        // RabbitMQ 对生产者消息进行确认时执行。
-        rabbitTemplate.setConfirmCallback((correlationData, ack, cause) -> {
-    //        只有以下条件同时满足，才执行主订单回滚：
-    //        1. Broker 没有确认成功
-    //        2. correlationData 不为空
-    //        3. correlationData ID 不为空
-    //        4. ID 以 main: 开头，说明是主订单消息
-            if (!ack && correlationData != null && correlationData.getId() != null
-                    && correlationData.getId().startsWith("main:")) {
-                Long orderId = Long.valueOf(correlationData.getId().substring("main:".length()));
-                log.error("秒杀订单消息未被 RabbitMQ 确认，orderId={}, cause={}", orderId, cause);
-                releaseReservation(orderId);
-            }
-        });
-//        当消息已经到交换机，但没有找到匹配队列时执行。
-        rabbitTemplate.setReturnsCallback(returned -> {
-            Object kind = returned.getMessage().getMessageProperties().getHeaders().get("message-kind");
-            Object orderId = returned.getMessage().getMessageProperties().getHeaders().get("orderId");
-            log.error("RabbitMQ 消息无法路由，exchange={}, routingKey={}, replyCode={}, replyText={}",
-                    returned.getExchange(), returned.getRoutingKey(), returned.getReplyCode(), returned.getReplyText());
-//            只处理主订单消息。重试消息、死信消息不在这里进行主订单回滚。
-            if (MAIN_MESSAGE_KIND.equals(kind) && orderId != null) {
-                Long id = Long.valueOf(orderId.toString());
-                returnedMainOrderIds.add(id);
-                releaseReservation(id);
-            }
-        });
     }
 
     @Override
@@ -111,7 +74,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         Long userId = UserHolder.getUser().getId();
         long orderId = redisIdWorker.nextId("order");
         // 1.执行seckill.lua，检查库存，检查用户是否重复购买，扣减 Redis 库存，记录用户抢购标记，记录 reservation
-        Long result = stringRedisTemplate.execute(SECKILL_SCRIPT, Collections.emptyList(),
+        Long result = stringRedisTemplate.execute(SECKILL_SCRIPT, Collections.emptyList(),  //execute(脚本对象, KEYS列表, ARGV参数...)
                 voucherId.toString(), userId.toString(), String.valueOf(orderId));
 
         // 2.执行失败
@@ -122,38 +85,37 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
 
         // 3.执行成功则构造订单对象
         VoucherOrder order = new VoucherOrder().setId(orderId).setUserId(userId).setVoucherId(voucherId);
-        // 4.创建 Publisher Confirm 关联数据。
-        CorrelationData correlationData = new CorrelationData("main:" + orderId);
-        // 5.Java 后端作为生产者，将订单消息发送到 RabbitMQ 主交换机，
-        // 等待 Broker 发布确认，消费者之后异步创建 MySQL 订单
+        // 4.发送到 RocketMQ 主 Topic；SYNC_SEND 返回 SEND_OK 才认为 Broker 已接收。
         try {
-            rabbitTemplate.convertAndSend(RabbitMQConfig.SECKILL_ORDER_EXCHANGE,
-                    RabbitMQConfig.SECKILL_ORDER_ROUTING_KEY, order, message -> {
-                        message.getMessageProperties().setDeliveryMode(MessageDeliveryMode.PERSISTENT);
-                        message.getMessageProperties().setHeader("message-kind", MAIN_MESSAGE_KIND);
-                        message.getMessageProperties().setHeader("orderId", String.valueOf(orderId));
-                        message.getMessageProperties().setHeader("x-retry-count", 0);
-                        message.getMessageProperties().setHeader(TraceContext.TRACE_ID_HEADER,
-                                TraceContext.currentTraceId());
-                        return message;
-                    }, correlationData);
-            // 等待 Broker 的 Publisher Confirm，确认消息可靠进入 RabbitMQ
-            CorrelationData.Confirm confirm = correlationData.getFuture()
-                    .get(PUBLISH_CONFIRM_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-            // 投递失败：1. Broker 返回 NACK 2. 之前发生过 Return
-            if (!confirm.isAck() || returnedMainOrderIds.remove(orderId)) {
+            Message<VoucherOrder> message = MessageBuilder.withPayload(order)
+                    .setHeader("message-kind", MAIN_MESSAGE_KIND)
+                    .setHeader("orderId", String.valueOf(orderId))
+                    .setHeader("x-retry-count", 0)
+                    .setHeader(TraceContext.TRACE_ID_HEADER, TraceContext.currentTraceId())
+                    .build();
+
+            SendResult sendResult = rocketMQTemplate.syncSend(RocketMQConfig.SECKILL_ORDER_TOPIC, message,
+                    TimeUnit.SECONDS.toMillis(PUBLISH_CONFIRM_TIMEOUT_SECONDS));
+
+            if (sendResult == null || sendResult.getSendStatus() != SendStatus.SEND_OK) {
                 releaseReservation(orderId);    // 释放redis预扣
                 seckillMqMetrics.publishFailure();
                 return Result.fail("订单消息发送失败，请稍后重试");
             }
-            // 正常完成：Redis 预扣成功，RabbitMQ 发布成功
+            // 正常完成：Redis 预扣成功，RocketMQ 已接收消息。
             seckillMqMetrics.published();
             return Result.ok(orderId);
-        } catch (java.util.concurrent.TimeoutException e) {
-            // 可能已进入 Broker 但确认延迟，保留预留状态等待定时补偿判断。
-            log.warn("秒杀订单 Publisher Confirm 超时，orderId={}", orderId);
+        } catch (org.springframework.messaging.MessagingException e) {
+            if (hasTimeoutCause(e)) {
+                // 网络超时的最终写入状态未知，保留 Redis 预留状态交由补偿任务判定。
+                log.warn("秒杀订单 RocketMQ 发送超时，orderId={}", orderId);
+                seckillMqMetrics.publishFailure();
+                return Result.fail("订单正在处理中，请稍后查询");
+            }
+            log.error("秒杀订单消息发送异常，orderId={}", orderId, e);
+            releaseReservation(orderId);
             seckillMqMetrics.publishFailure();
-            return Result.fail("订单正在处理中，请稍后查询");
+            return Result.fail("订单消息发送失败，请稍后重试");
         } catch (Exception e) {
             log.error("秒杀订单消息发送异常，orderId={}", orderId, e);
             releaseReservation(orderId);
@@ -162,11 +124,23 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         }
     }
 
+    private boolean hasTimeoutCause(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (current instanceof org.apache.rocketmq.remoting.exception.RemotingTimeoutException
+                    || current instanceof org.apache.rocketmq.remoting.exception.RemotingTooMuchRequestException) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
     @Override
     @Transactional
     public void handleVoucherOrderByMq(VoucherOrder voucherOrder) {
         Long orderId = voucherOrder.getId();
-//        创建订单级别的锁，避免多个消费者操作一个订单
+        // 创建订单级别的锁，避免多个消费者操作一个订单
         RLock lock = redissonClient.getLock(RedisConstants.SECKILL_RESERVATION_LOCK_KEY + orderId);
         boolean locked = false;
         try {
@@ -213,6 +187,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             Thread.currentThread().interrupt();
             throw new IllegalStateException("获取秒杀订单处理锁时被中断", e);
         } finally {
+            // 确实拿到了锁，并且锁还归当前线程所有
             if (locked && lock.isHeldByCurrentThread()) {
                 // @Transactional 的提交发生在方法返回后，锁也必须延迟到事务完成后释放，
                 // 否则补偿任务可能在提交窗口内把尚未可见的订单当成失败订单回补。
@@ -225,7 +200,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
                             }
                         }
                     });
-                } else {
+                } else {    // 当前分支根本没有事务了
                     lock.unlock();
                 }
             }
@@ -237,13 +212,17 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     }
 
     private void confirmReservationAfterCommit(Long orderId) {
+        // 判断当前是否在事务中？
         if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            // 已经不在事务里：没有“提交后”这个概念，直接确认 Redis 预留即可。
             confirmReservation(orderId);
             return;
         }
+
+        //在事务里：不能立刻确认，继续往下注册回调。
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
-            public void afterCommit() {
+            public void afterCommit() { // 重写aftercommit函数，提交之后再确认缓存
                 confirmReservation(orderId);
             }
         });
@@ -291,6 +270,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     @Scheduled(fixedDelay = 60_000)
     public void compensateExpiredReservations() {
         long cutoff = System.currentTimeMillis() / 1000 - RESERVATION_TIMEOUT_SECONDS;
+//        查询当前预留时间长超过五分钟的订单
         Set<String> orderIds = stringRedisTemplate.opsForZSet().rangeByScore(
                 RedisConstants.SECKILL_RESERVATION_INDEX_KEY, 0, cutoff, 0, 100);
         if (orderIds == null || orderIds.isEmpty()) {

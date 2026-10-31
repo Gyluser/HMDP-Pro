@@ -16,7 +16,7 @@ public interface IVoucherOrderService extends IService<VoucherOrder> {
 
     Result seckillVoucher(Long voucherId);
 
-    /** RabbitMQ 消费端创建秒杀订单。 */
+    /** RocketMQ 消费端创建秒杀订单。 */
     void handleVoucherOrderByMq(VoucherOrder voucherOrder);
 
 }

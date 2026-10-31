@@ -6,7 +6,7 @@ spring:
     ansi:
       enabled: always
   datasource:
-    url: jdbc:mysql://127.0.0.1:3306/hmdpA?useSSL=false&serverTimezone=UTC
+    url: jdbc:mysql://127.0.0.1:3306/hmdp_pro?useSSL=false&serverTimezone=UTC
     driver-class-name: com.mysql.cj.jdbc.Driver
     username: root
     password: ${HMDP_DB_PASSWORD:123321}
@@ -21,23 +21,7 @@ spring:
           max-idle: 10
           min-idle: 1
           time-between-eviction-runs: 10s
-      database: 1
-  rabbitmq:
-    host: 127.0.0.1
-    port: 5672
-    virtual-host: /hmdp
-    username: hmdp
-    password: 123321
-    publisher-confirm-type: correlated
-    publisher-returns: true
-    template:
-      mandatory: true
-    listener:
-      simple:
-        # 监听方法正常结束后由容器确认；抛异常则按失败处理。
-        acknowledge-mode: auto
-        default-requeue-rejected: false
-        prefetch: 10
+      database: 2
   jackson:
     default-property-inclusion: non_null # JSON处理时忽略非空字段
   servlet:
@@ -51,7 +35,13 @@ logging:
   level:
     com.hmdp: debug
 server:
-  port: 8091
+  port: 8071
+rocketmq:
+  # 单机 NameServer；可通过系统环境变量 ROCKETMQ_NAMESRV 覆盖。
+  name-server: ${ROCKETMQ_NAMESRV:127.0.0.1:9876}
+  producer:
+    group: hmdp-pro-seckill-producer
+    send-message-timeout: 3000
 # 配置ai模型
 langchain4j:
   open-ai:
