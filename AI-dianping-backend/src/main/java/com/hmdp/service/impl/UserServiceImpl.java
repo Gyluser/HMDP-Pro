@@ -34,14 +34,6 @@ import java.util.concurrent.TimeUnit;
 import static com.hmdp.utils.RedisConstants.USER_SIGN_KEY;
 import static com.hmdp.utils.SystemConstants.USER_NICK_NAME_PREFIX;
 
-/**
- * <p>
- * 服务实现类
- * </p>
- *
- * @author 超大王
- * @since 2025-09-15
- */
 @Slf4j
 @Service
 public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IUserService {

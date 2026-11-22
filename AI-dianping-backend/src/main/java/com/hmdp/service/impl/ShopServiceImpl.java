@@ -32,14 +32,6 @@ import java.util.List;
 import java.util.HashMap;
 import java.util.Map;
 
-/**
- * <p>
- * 服务实现类
- * </p>
- *
- * @author 超大王
- * @since 2025-09-18
- */
 @Slf4j
 @Service
 public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IShopService {

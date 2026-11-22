@@ -364,14 +364,6 @@ CREATE TABLE `tb_voucher_order`  (
                                      UNIQUE KEY `uk_voucher_order_user_voucher` (`user_id`, `voucher_id`)
 ) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci ROW_FORMAT = Compact;
 
-CREATE TABLE `tb_follow` (
-                             `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT '主键',
-                             `user_id` bigint(20) unsigned NOT NULL COMMENT '用户id',
-                             `follow_user_id` bigint(20) unsigned NOT NULL COMMENT '关联的用户id',
-                             `create_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-                             PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
 CREATE TABLE `tb_seckill_order_exception` (
     `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '主键',
     `order_id` bigint NOT NULL COMMENT '秒杀订单ID',

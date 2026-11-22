@@ -8,11 +8,13 @@ import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ZSetOperations;
+import org.springframework.messaging.MessagingException;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -22,6 +24,17 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class VoucherOrderServiceImplTest {
+
+    @Test
+    void shouldTreatRocketMqSendRequestTimeoutAsUncertainDelivery() {
+        VoucherOrderServiceImpl voucherOrderService = new VoucherOrderServiceImpl();
+        MessagingException exception = new MessagingException("send timeout",
+                new org.apache.rocketmq.remoting.exception.RemotingTooMuchRequestException("send timeout"));
+
+        Boolean timedOut = ReflectionTestUtils.invokeMethod(voucherOrderService, "hasTimeoutCause", exception);
+
+        assertThat(timedOut).isTrue();
+    }
 
     @Test
     void shouldRemoveMalformedReservationIndexAndContinue() {

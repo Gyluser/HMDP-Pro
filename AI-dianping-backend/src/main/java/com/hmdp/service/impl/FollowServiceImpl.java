@@ -18,14 +18,6 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 
-/**
- * <p>
- *  服务实现类
- * </p>
- *
- * @author 超大王
- * @since 2025-09-25
- */
 @Service
 public class FollowServiceImpl extends ServiceImpl<FollowMapper, Follow> implements IFollowService {
 

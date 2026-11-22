@@ -10,14 +10,6 @@ import com.hmdp.utils.SystemConstants;
 import jakarta.annotation.Resource;
 import org.springframework.web.bind.annotation.*;
 
-/**
- * <p>
- * 前端控制器
- * </p>
- *
- * @author 超大王
- * @since 2025-09-18
- */
 @RestController
 @RequestMapping("/shop")
 public class ShopController {

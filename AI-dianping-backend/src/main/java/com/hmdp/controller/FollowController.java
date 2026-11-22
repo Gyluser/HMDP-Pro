@@ -7,14 +7,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 
-/**
- * <p>
- *  前端控制器
- * </p>
- *
- * @author 超大王
- * @since 2025-09-25
- */
 @RestController
 @RequestMapping("/follow")
 public class FollowController {

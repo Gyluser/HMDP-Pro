@@ -35,7 +35,7 @@ end
 redis.call('incrby', stockKey, -1)
 -- 3.5.下单（保存用户）sadd orderKey userId
 redis.call('sadd', orderKey, userId)
--- 3.6记录 Redis 预扣状态。订单消息仅由 Java 发送至 RabbitMQ，彻底移除 Redis Stream。
+-- 3.6记录 Redis 预扣状态。订单消息仅由 Java 发送至 RocketMQ，彻底移除 Redis Stream。
 local now = redis.call('time')[1]
 redis.call('hset', reservationKey, 'userId', userId, 'voucherId', voucherId, 'createdAt', now)
 redis.call('zadd', reservationIndexKey, now, orderId)

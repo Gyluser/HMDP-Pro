@@ -1,12 +1,10 @@
 package com.hmdp;
 
-import com.hmdp.config.RabbitMQConfig;
 import com.hmdp.utils.RedisConstants;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.amqp.core.AmqpAdmin;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.Cursor;
@@ -29,12 +27,9 @@ import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** 本机 Redis/RabbitMQ 集成测试：仅使用临时秒杀 Key，结束后清理。 */
+/** 本机 Redis/RocketMQ 迁移后的 Redis 预扣集成测试：仅使用临时秒杀 Key，结束后清理。 */
 @SpringBootTest(properties = "spring.task.scheduling.enabled=false")
-class RabbitMqSeckillIntegrationTests {
-
-    @Autowired
-    private AmqpAdmin amqpAdmin;
+class RocketMqSeckillIntegrationTests {
     @Autowired
     private StringRedisTemplate stringRedisTemplate;
 
@@ -43,14 +38,6 @@ class RabbitMqSeckillIntegrationTests {
     private String orderId;
     private final Set<String> testVoucherIds = ConcurrentHashMap.newKeySet();
     private final Set<String> testOrderIds = ConcurrentHashMap.newKeySet();
-
-    @Test
-    void shouldDeclareRabbitMqTopology() {
-        assertThat(amqpAdmin.getQueueProperties(RabbitMQConfig.SECKILL_ORDER_QUEUE)).isNotNull();
-        assertThat(amqpAdmin.getQueueProperties(RabbitMQConfig.SECKILL_ORDER_RETRY_5S_QUEUE)).isNotNull();
-        assertThat(amqpAdmin.getQueueProperties(RabbitMQConfig.SECKILL_ORDER_RETRY_30S_QUEUE)).isNotNull();
-        assertThat(amqpAdmin.getQueueProperties(RabbitMQConfig.SECKILL_ORDER_DLX_QUEUE)).isNotNull();
-    }
 
     @Test
     void shouldReserveConfirmAndReleaseSeckillStateAtomically() {

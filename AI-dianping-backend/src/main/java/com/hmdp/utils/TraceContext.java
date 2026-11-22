@@ -4,7 +4,7 @@ import org.slf4j.MDC;
 
 import java.util.UUID;
 
-/** HTTP 请求与 RabbitMQ 消息之间传递的轻量 TraceId 上下文。 用ThreadLocal区分不同线程 */
+/** HTTP 请求与 RocketMQ 消息之间传递的轻量 TraceId 上下文。用 ThreadLocal 区分不同线程。 */
 public final class TraceContext {
     public static final String TRACE_ID_HEADER = "X-Trace-Id";
     private static final String MDC_KEY = "traceId";

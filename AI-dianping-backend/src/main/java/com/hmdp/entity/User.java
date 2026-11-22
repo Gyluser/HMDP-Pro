@@ -10,14 +10,6 @@ import lombok.experimental.Accessors;
 import java.io.Serializable;
 import java.time.LocalDateTime;
 
-/**
- * <p>
- * 
- * </p>
- *
- * @author 超大王
- * @since 2025-09-16
- */
 @Data
 @EqualsAndHashCode(callSuper = false)
 @Accessors(chain = true)

@@ -34,7 +34,10 @@ public class MvcConfig implements WebMvcConfigurer {
                         "/upload/**",
                         "/blog/hot",
                         "/user/code",
-                        "/user/login"
+                        "/user/login",
+                        // Endpoint itself exists only with hmdp.perf-metrics.enabled=true.
+                        "/internal/perf/seckill",
+                        "/internal/perf/seckill/**"
                 ).order(1);
         registry.addInterceptor(refreshTokenInterceptor).addPathPatterns("/**").order(0);
     }

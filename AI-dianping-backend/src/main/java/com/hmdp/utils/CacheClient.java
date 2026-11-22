@@ -25,14 +25,6 @@ import static com.hmdp.utils.RedisConstants.CACHE_NULL_TTL;
 import static com.hmdp.utils.RedisConstants.LOCK_SHOP_KEY;
 import static com.hmdp.utils.RedisConstants.LOCK_SHOP_TTL;
 
-/**
- * <p>
- * Redis工具类
- * </p>
- *
- * @author 超大王
- * @since 2025-09-19
- */
 @Slf4j
 @Component
 public class CacheClient {

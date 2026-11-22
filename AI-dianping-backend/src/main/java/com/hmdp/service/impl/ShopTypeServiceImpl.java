@@ -16,14 +16,6 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 
-/**
- * <p>
- *  服务实现类
- * </p>
- *
- * @author 超大王
- * @since 2025-09-17
- */
 @Service
 public class ShopTypeServiceImpl extends ServiceImpl<ShopTypeMapper, ShopType> implements IShopTypeService {
 
